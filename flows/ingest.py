@@ -2,15 +2,23 @@ import polars as pl
 import os
 
 def ingest_data():
-    print("Iniciando la ingesta con eliminación de duplicados de FIFA 2026...")
+    print("Iniciando la ingesta inteligente del dataset de FIFA 2026...")
     
-    csv_path = "data/raw/fifa_data.csv"
+    # Rutas alternativas para máxima reproducibilidad
+    csv_path_full = "data/raw/fifa_data.csv"
+    csv_path_sample = "data/raw/fifa_sample.csv"
     
-    if not os.path.exists(csv_path):
-        print(f"Error: No se encontró el archivo en {csv_path}")
+    if os.path.exists(csv_path_full):
+        csv_path = csv_path_full
+        print("-> Procesando dataset completo proporcionado por el evaluador.")
+    elif os.path.exists(csv_path_sample):
+        csv_path = csv_path_sample
+        print("-> Procesando dataset de muestra integrado en el repositorio.")
+    else:
+        print("Error: No se encontró ningún archivo CSV de origen en data/raw/")
         return
 
-    # 1. Leer el CSV completo
+    # 1. Leer el CSV detectado
     df = pl.read_csv(csv_path, infer_schema_length=10000)
 
     required_columns = [

@@ -21,3 +21,10 @@ Siga estos tres sencillos pasos para levantar y probar la aplicación completa d
 git clone <https://github.com/olopez27CL/fifa-pipeline-OmarLopez.git>
 cd fifa-pipeline-OmarLopez# fifa-pipeline-OmarLopez
 Evaluacion Pipeline UNIDAD 3 BIGDATA - BenjaminAzocar - Omar Lopez - Pohla Lopez - Sebastian Yucra
+
+### 2. Colocar el Dataset (Opcional)
+El repositorio ya incluye un archivo de muestra (`data/raw/fifa_sample.csv`) para que el sistema funcione de inmediato al ser clonado. 
+
+Si desea probar la solución con el dataset completo de 75 columnas:
+1. Reemplace el archivo o asegúrese de renombrarlo exactamente como: `data/raw/fifa_data.csv`
+2. El script de `Polars` detectará automáticamente el archivo completo, aplicará la limpieza de duplicados y limitará el procesamiento a los 5,000 registros requeridos.
