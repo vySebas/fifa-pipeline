@@ -1,0 +1,17 @@
+name: 'fifa_pipeline'
+version: '1.0.0'
+config-version: 2
+
+profile: 'fifa_profile'
+
+model-paths: ["dbt_project/models"]
+seed-paths: ["dbt_project/seeds"]
+test-paths: ["dbt_project/tests"]
+analysis-paths: ["dbt_project/analyses"]
+
+models:
+  fifa_pipeline:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table

@@ -1,0 +1,19 @@
+version: 2
+
+models:
+  - name: stg_players
+    description: "Datos estandarizados de rendimiento de los jugadores de la FIFA"
+    columns:
+      - name: player_id
+        description: "Identificador único del jugador"
+        tests:
+          - unique
+          - not_null
+      - name: goals
+        description: "Goles anotados por el jugador"
+        tests:
+          - not_null
+      - name: position
+        description: "Posición táctica del jugador en la cancha"
+        tests:
+          - not_null

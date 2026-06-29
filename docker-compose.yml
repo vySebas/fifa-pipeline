@@ -1,0 +1,9 @@
+services:
+  pipeline:
+    build: .
+    ports:
+      - "8050:8050"
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    command: sh -c "dbt run --project-dir . --profiles-dir . && dbt test --project-dir . --profiles-dir . && python dashboard.py"

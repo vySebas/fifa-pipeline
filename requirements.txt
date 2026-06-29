@@ -1,0 +1,9 @@
+polars
+duckdb
+dbt-core
+dbt-duckdb
+prefect
+dash
+plotly
+numpy
+pandas
