@@ -6,4 +6,4 @@ services:
     volumes:
       - .:/workspace
     working_dir: /workspace
-    command: sh -c "dbt run --project-dir . --profiles-dir . && dbt test --project-dir . --profiles-dir . && python dashboard.py"
+    command: sh -c "python3 flows/ingest.py && dbt run && dbt test && python dashboard.py"
