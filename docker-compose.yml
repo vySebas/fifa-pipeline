@@ -3,7 +3,18 @@ services:
     build: .
     ports:
       - "8050:8050"
+      - "4200:4200"
     volumes:
       - .:/workspace
     working_dir: /workspace
-    command: sh -c "python3 flows/ingest.py && dbt run && dbt test && python dashboard.py"
+    environment:
+      - PREFECT_API_URL=http://127.0.0.1:4200/api
+    command: >
+      sh -c "
+      prefect server start --host 0.0.0.0 &
+      until curl -s http://127.0.0.1:4200/api/health > /dev/null; do
+        echo 'Esperando a que Prefect server este listo...';
+        sleep 2;
+      done &&
+      python3 -m flows.orchestrate
+      "

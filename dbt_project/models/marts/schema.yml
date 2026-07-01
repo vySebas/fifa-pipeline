@@ -1,0 +1,46 @@
+version: 2
+
+models:
+  - name: dim_players
+    description: "Dimension con atributos descriptivos y fisicos del jugador"
+    columns:
+      - name: player_id
+        tests:
+          - unique
+          - not_null
+
+  - name: dim_teams
+    description: "Dimension con la nacionalidad/seleccion del jugador"
+    columns:
+      - name: nationality
+        tests:
+          - unique
+          - not_null
+
+  - name: dim_positions
+    description: "Dimension con la posicion tactica del jugador"
+    columns:
+      - name: position
+        tests:
+          - unique
+          - not_null
+
+  - name: fct_player_performance
+    description: "Tabla de hechos con metricas de rendimiento por jugador"
+    columns:
+      - name: player_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_players')
+              field: player_id
+      - name: nationality
+        tests:
+          - relationships:
+              to: ref('dim_teams')
+              field: nationality
+      - name: position
+        tests:
+          - relationships:
+              to: ref('dim_positions')
+              field: position

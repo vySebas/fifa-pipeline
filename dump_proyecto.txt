@@ -1,0 +1,896 @@
+=== TREE ===
+.
+├── Dockerfile
+├── README.md
+├── dashboard.py
+├── data
+│   ├── raw
+│   │   ├── fifa_clean.parquet
+│   │   ├── fifa_data.csv
+│   │   └── fifa_sample.csv
+│   └── transformed
+├── dbt_project
+│   └── models
+│       ├── marts
+│       │   └── fct_players_summary.sql
+│       └── staging
+│           ├── schema.yml
+│           └── stg_players.sql
+├── dbt_project.yml
+├── docker-compose.yml
+├── dump_proyecto.txt
+├── flows
+│   ├── ingest.py
+│   └── orchestrate.py
+├── logs
+│   └── dbt.log
+├── profiles.yml
+├── requirements.txt
+└── target
+    ├── compiled
+    │   └── fifa_pipeline
+    │       └── dbt_project
+    │           └── models
+    │               ├── marts
+    │               │   └── fct_players_summary.sql
+    │               └── staging
+    │                   ├── schema.yml
+    │                   │   ├── not_null_stg_players_goals.sql
+    │                   │   ├── not_null_stg_players_player_id.sql
+    │                   │   ├── not_null_stg_players_position.sql
+    │                   │   └── unique_stg_players_player_id.sql
+    │                   └── stg_players.sql
+    ├── graph.gpickle
+    ├── graph_summary.json
+    ├── manifest.json
+    ├── partial_parse.msgpack
+    ├── run
+    │   └── fifa_pipeline
+    │       └── dbt_project
+    │           └── models
+    │               ├── marts
+    │               │   └── fct_players_summary.sql
+    │               └── staging
+    │                   ├── schema.yml
+    │                   │   ├── not_null_stg_players_goals.sql
+    │                   │   ├── not_null_stg_players_player_id.sql
+    │                   │   ├── not_null_stg_players_position.sql
+    │                   │   └── unique_stg_players_player_id.sql
+    │                   └── stg_players.sql
+    ├── run_results.json
+    └── semantic_manifest.json
+
+25 directories, 35 files
+
+
+=== ARCHIVO: README.md ===
+# Pipeline de Ingeniería de Datos: FIFA World Cup 2026 ⚽📊
+
+Este proyecto implementa una solución completa de **Modern Data Stack** contenerizada en **Docker** para la ingesta, limpieza, transformación analítica y visualización interactiva del rendimiento de los jugadores para el Mundial 2026.
+
+## 🛠️ Arquitectura del Modern Data Stack
+* **Ingesta y Limpieza:** `Polars` (Manejo de nulos, eliminación de duplicados por ID y límite estricto de 5,000 registros).
+* **Almacenamiento y Cómputo:** `DuckDB` (Base de datos analítica integrada local).
+* **Transformación (ELT):** `dbt Core` (Capa de Staging con casts de tipos y Data Mart con la tabla de hechos resumida).
+* **Calidad de Datos:** `dbt tests` (Validaciones automáticas de unicidad y no nulidad).
+* **Orquestación:** `Prefect` (Secuenciación efímera local).
+* **Dashboard Visual:** `Dash` & `Plotly Express` (Análisis multidimensional con operaciones interactivas de **Roll-up** y **Drill-down**).
+
+---
+
+## 🚀 Instrucciones de Ejecución (Para el Evaluador)
+
+Siga estos tres sencillos pasos para levantar y probar la aplicación completa de forma 100% reproducible:
+
+### 1. Clonar el repositorio
+```bash
+git clone <https://github.com/olopez27CL/fifa-pipeline-OmarLopez.git>
+cd fifa-pipeline-OmarLopez# fifa-pipeline-OmarLopez
+Evaluacion Pipeline UNIDAD 3 BIGDATA - BenjaminAzocar - Omar Lopez - Pohla Lopez - Sebastian Yucra
+
+### 2. Colocar el Dataset (Opcional)
+El repositorio ya incluye un archivo de muestra (`data/raw/fifa_sample.csv`) para que el sistema funcione de inmediato al ser clonado. 
+
+Si desea probar la solución con el dataset completo de 75 columnas:
+1. Reemplace el archivo o asegúrese de renombrarlo exactamente como: `data/raw/fifa_data.csv`
+2. El script de `Polars` detectará automáticamente el archivo completo, aplicará la limpieza de duplicados y limitará el procesamiento a los 5,000 registros requeridos.
+
+=== ARCHIVO: docker-compose.yml ===
+services:
+  pipeline:
+    build: .
+    ports:
+      - "8050:8050"
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    command: sh -c "python3 flows/orchestrate.py && python3 dashboard.py"
+
+=== ARCHIVO: Dockerfile ===
+FROM python:3.11-slim
+RUN apt-get update && apt-get install -y git curl build-essential && rm -rf /var/lib/apt/lists/*
+WORKDIR /workspace
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+=== ARCHIVO: requirements.txt ===
+polars
+duckdb
+dbt-core
+dbt-duckdb
+prefect
+dash
+plotly
+numpy
+pandas
+
+=== ARCHIVO: flows/orchestrate.py ===
+from prefect import flow, task
+import subprocess
+from flows.ingest import ingest_data
+
+@task(name="Ingesta de Datos FIFA")
+def task_ingest():
+    ingest_data()
+
+@task(name="Transformación Analítica dbt")
+def task_dbt_run():
+    print("Ejecutando dbt run...")
+
+    subprocess.run(
+        [
+            "dbt",
+            "run",
+            "--project-dir", ".",
+            "--profiles-dir", "."
+        ],
+        check=True
+    )
+
+@task(name="Pruebas de Calidad dbt")
+def task_dbt_test():
+    print("Ejecutando dbt test...")
+
+    subprocess.run(
+        [
+            "dbt",
+            "test",
+            "--project-dir", ".",
+            "--profiles-dir", "."
+        ],
+        check=True
+    )
+
+@flow(name="Pipeline FIFA World Cup 2026")
+def fifa_pipeline():
+
+    task_ingest()
+
+    task_dbt_run()
+
+    task_dbt_test()
+
+if __name__ == "__main__":
+    fifa_pipeline()
+
+=== ARCHIVO: flows/ingest.py ===
+import polars as pl
+import os
+
+def ingest_data():
+    print("Iniciando la ingesta inteligente del dataset de FIFA 2026...")
+    
+    # Rutas alternativas para máxima reproducibilidad
+    csv_path_full = "data/raw/fifa_data.csv"
+    csv_path_sample = "data/raw/fifa_sample.csv"
+    
+    if os.path.exists(csv_path_full):
+        csv_path = csv_path_full
+        print("-> Procesando dataset completo proporcionado por el evaluador.")
+    elif os.path.exists(csv_path_sample):
+        csv_path = csv_path_sample
+        print("-> Procesando dataset de muestra integrado en el repositorio.")
+    else:
+        print("Error: No se encontró ningún archivo CSV de origen en data/raw/")
+        return
+
+    # 1. Leer el CSV detectado
+    df = pl.read_csv(csv_path, infer_schema_length=10000)
+
+    required_columns = [
+        "player_id", 
+        "player_name", 
+        "nationality", 
+        "position", 
+        "age", 
+        "height_cm", 
+        "goals", 
+        "shots_on_target", 
+        "expected_goals_xg", 
+        "yellow_cards"
+    ]
+
+    # 2. Filtrar columnas, quitar nulos, y ELIMINAR DUPLICADOS por ID antes del limit
+    df_filtered = (
+        df.select(required_columns)
+        .drop_nulls(subset=["player_id"])
+        .unique(subset=["player_id"])
+        .limit(5000)
+    )
+
+    # 3. Guardar en Parquet limpio
+    os.makedirs("data/raw", exist_ok=True)
+    output_path = "data/raw/fifa_clean.parquet"
+    df_filtered.write_parquet(output_path)
+
+    print(f"¡Ingesta y Depuración completada exitosamente!")
+    print(f"Total de registros únicos guardados para dbt: {df_filtered.height}")
+
+if __name__ == "__main__":
+    ingest_data()
+
+
+=== ARCHIVO: dashboard.py ===
+import dash
+from dash import dcc, html, Input, Output
+import plotly.express as px
+import duckdb
+
+app = dash.Dash(__name__)
+
+# DISEÑO MAXIMIZADO: Fuentes grandes y contenedor expandido al 95% de la pantalla
+ESTILO_PANEL = {
+    'fontFamily': 'Segoe UI, Helvetica, Arial, sans-serif',
+    'backgroundColor': '#f3f4f6',
+    'color': '#111111',
+    'padding': '40px',
+    'width': '95%',
+    'margin': '0 auto'
+}
+
+ESTILO_TARJETA = {
+    'backgroundColor': '#ffffff',
+    'padding': '40px',
+    'borderRadius': '16px',
+    'boxShadow': '0 4px 20px rgba(0,0,0,0.06)',
+    'marginBottom': '35px'
+}
+
+app.layout = html.Div(style=ESTILO_PANEL, children=[
+    
+    # Encabezado Gigante
+    html.Div(style={'textAlign': 'center', 'marginBottom': '60px'}, children=[
+        html.H1("Rendimiento de Jugadores - FIFA World Cup 2026", style={'fontWeight': '700', 'fontSize': '42px', 'margin': '0 0 15px 0', 'color': '#111111'}),
+        html.P("Análisis Multidimensional Interactivo • Operaciones de Roll-up (Global) y Drill-down (Detalle)", style={'color': '#4b5563', 'fontSize': '22px', 'fontWeight': '400'})
+    ]),
+    
+    # Selector de País Enorme
+    html.Div(style=ESTILO_TARJETA, children=[
+        html.Label("Seleccionar País para aplicar Drill-down (Aumentar Detalle):", style={'fontWeight': '700', 'fontSize': '22px', 'display': 'block', 'marginBottom': '20px', 'color': '#2563eb'}),
+        dcc.Dropdown(
+            id='filtro-pais',
+            placeholder="Escriba o seleccione un país para desglosar estadísticas...",
+            style={'width': '100%', 'fontSize': '20px', 'color': '#111111'}
+        )
+    ]),
+    
+    # Gráficos en Paralelo Grandes
+    html.Div(style={'display': 'flex', 'gap': '30px', 'flexWrap': 'wrap'}, children=[
+        html.Div(style={'flex': '1', 'minWidth': '600px'}, children=[
+            html.Div(style=ESTILO_TARJETA, children=[
+                dcc.Graph(id='grafico-goles', style={'height': '550px'})
+            ])
+        ]),
+        html.Div(style={'flex': '1', 'minWidth': '600px'}, children=[
+            html.Div(style=ESTILO_TARJETA, children=[
+                dcc.Graph(id='grafico-posiciones', style={'height': '550px'})
+            ])
+        ])
+    ]),
+    
+    # Gráfico de Eficiencia Inferior
+    html.Div(style=ESTILO_TARJETA, children=[
+        dcc.Graph(id='grafico-dispersion', style={'height': '600px'})
+    ])
+])
+
+@app.callback(
+    [Output('filtro-pais', 'options'),
+     Output('grafico-goles', 'figure'),
+     Output('grafico-posiciones', 'figure'),
+     Output('grafico-dispersion', 'figure')],
+    [Input('filtro-pais', 'value')]
+)
+def actualizar_dashboard(pais_seleccionado):
+    conn = duckdb.connect('data/transformed/fifa.duckdb')
+    
+    # LEER APUNTANDO DIRECTAMENTE AL ESQUEMA INTERNO DE DBT (main)
+    paises = [row[0] for row in conn.execute("SELECT DISTINCT nationality FROM main.stg_players WHERE nationality IS NOT NULL ORDER BY nationality").fetchall()]
+    opciones_dropdown = [{'label': p, 'value': p} for p in paises]
+    
+    if not pais_seleccionado:
+        # ==========================================
+        # MODO ROLL-UP (Vista de Mayor Jerarquía)
+        # ==========================================
+        df_goles = conn.execute("SELECT nationality, SUM(goals) as goles FROM main.stg_players GROUP BY nationality ORDER BY goles DESC LIMIT 10").df()
+        df_pos = conn.execute("SELECT position, COUNT(player_id) as total FROM main.stg_players GROUP BY position").df()
+        df_disp = conn.execute("SELECT nationality, SUM(expected_goals_xg) as xg, SUM(goals) as goles FROM main.stg_players GROUP BY nationality").df()
+        
+        fig_goles = px.bar(df_goles, x='nationality', y='goles', title='Top 10 Países con Mayor Goleo (Roll-up Global)', template='plotly_white', color_discrete_sequence=['#2563eb'])
+        fig_posiciones = px.pie(df_pos, values='total', names='position', title='Distribución Global de Jugadores por Posición', template='plotly_white', color_discrete_sequence=px.colors.qualitative.Set3)
+        fig_dispersion = px.scatter(df_disp, x='xg', y='goles', hover_name='nationality', title='Eficiencia Global: Goles Esperados (xG) vs Goles Reales', template='plotly_white', color_discrete_sequence=['#10b981'])
+    else:
+        # ==========================================
+        # MODO DRILL-DOWN (Desglose de Menor Jerarquía)
+        # ==========================================
+        df_goles = conn.execute("SELECT player_name, goals FROM main.stg_players WHERE nationality = ? ORDER BY goals DESC LIMIT 10", [pais_seleccionado]).df()
+        df_pos = conn.execute("SELECT position, COUNT(player_id) as total FROM main.stg_players WHERE nationality = ? GROUP BY position", [pais_seleccionado]).df()
+        df_disp = conn.execute("SELECT player_name, expected_goals_xg as xg, goals, position FROM main.stg_players WHERE nationality = ?", [pais_seleccionado]).df()
+        
+        fig_goles = px.bar(df_goles, x='player_name', y='goals', title=f'Máximos Anotadores: {pais_seleccionado} (Drill-down Individual)', template='plotly_white', color_discrete_sequence=['#f59e0b'])
+        fig_posiciones = px.pie(df_pos, values='total', names='position', title=f'Composición Táctica: {pais_seleccionado}', template='plotly_white', color_discrete_sequence=px.colors.qualitative.Pastel)
+        fig_dispersion = px.scatter(df_disp, x='xg', y='goals', color='position', hover_name='player_name', title=f'Rendimiento de Jugadores de {pais_seleccionado} (xG vs Goles)', template='plotly_white')
+
+    conn.close()
+    
+    # AUMENTO ESCALADO DE FUENTES EN LOS TRES GRÁFICOS
+    for fig in [fig_goles, fig_posiciones, fig_dispersion]:
+        fig.update_layout(
+            font_family="Segoe UI, Helvetica, Arial, sans-serif",
+            font_size=16,            # Letras de los ejes más grandes
+            title_font_size=22,      # Títulos de gráficos imponentes
+            title_font_color="#111111",
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            margin=dict(l=40, r=40, t=60, b=40)
+        )
+    return opciones_dropdown, fig_goles, fig_posiciones, fig_dispersion
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8050, debug=False)
+
+=== ARCHIVO: dbt_project.yml ===
+name: 'fifa_pipeline'
+version: '1.0.0'
+config-version: 2
+
+profile: 'fifa_profile'
+
+model-paths: ["dbt_project/models"]
+seed-paths: ["dbt_project/seeds"]
+test-paths: ["dbt_project/tests"]
+analysis-paths: ["dbt_project/analyses"]
+
+models:
+  fifa_pipeline:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table
+
+=== ARCHIVO: profiles.yml ===
+fifa_profile:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: 'data/transformed/fifa.duckdb'
+      extensions:
+        - parquet
+
+=== ARCHIVO: ./target/compiled/fifa_pipeline/dbt_project/models/marts/fct_players_summary.sql ===
+WITH staging AS (
+    SELECT * FROM "fifa"."main"."stg_players"
+)
+
+SELECT
+    nationality,
+    position,
+    COUNT(player_id) AS total_players,
+    AVG(age) AS average_age,
+    AVG(height_cm) AS average_height,
+    SUM(goals) AS total_goals,
+    SUM(shots_on_target) AS total_shots_on_target,
+    SUM(expected_goals_xg) AS total_expected_goals_xg,
+    SUM(yellow_cards) AS total_yellow_cards
+FROM staging
+GROUP BY nationality, position
+=== ARCHIVO: ./target/compiled/fifa_pipeline/dbt_project/models/staging/schema.yml/unique_stg_players_player_id.sql ===
+
+    
+    
+
+select
+    player_id as unique_field,
+    count(*) as n_records
+
+from "fifa"."main"."stg_players"
+where player_id is not null
+group by player_id
+having count(*) > 1
+
+
+
+=== ARCHIVO: ./target/compiled/fifa_pipeline/dbt_project/models/staging/schema.yml/not_null_stg_players_position.sql ===
+
+    
+    
+
+
+
+select position
+from "fifa"."main"."stg_players"
+where position is null
+
+
+
+=== ARCHIVO: ./target/compiled/fifa_pipeline/dbt_project/models/staging/schema.yml/not_null_stg_players_goals.sql ===
+
+    
+    
+
+
+
+select goals
+from "fifa"."main"."stg_players"
+where goals is null
+
+
+
+=== ARCHIVO: ./target/compiled/fifa_pipeline/dbt_project/models/staging/schema.yml/not_null_stg_players_player_id.sql ===
+
+    
+    
+
+
+
+select player_id
+from "fifa"."main"."stg_players"
+where player_id is null
+
+
+
+=== ARCHIVO: ./target/compiled/fifa_pipeline/dbt_project/models/staging/stg_players.sql ===
+SELECT
+    player_id,
+    player_name,
+    nationality,
+    position,
+    CAST(age AS INTEGER) AS age,
+    CAST(height_cm AS INTEGER) AS height_cm,
+    CAST(goals AS INTEGER) AS goals,
+    CAST(shots_on_target AS INTEGER) AS shots_on_target,
+    CAST(expected_goals_xg AS DOUBLE) AS expected_goals_xg,
+    CAST(yellow_cards AS INTEGER) AS yellow_cards
+FROM read_parquet('data/raw/fifa_clean.parquet')
+=== ARCHIVO: ./target/run/fifa_pipeline/dbt_project/models/marts/fct_players_summary.sql ===
+
+  
+    
+    
+
+    create  table
+      "fifa"."main"."fct_players_summary__dbt_tmp"
+  
+    as (
+      WITH staging AS (
+    SELECT * FROM "fifa"."main"."stg_players"
+)
+
+SELECT
+    nationality,
+    position,
+    COUNT(player_id) AS total_players,
+    AVG(age) AS average_age,
+    AVG(height_cm) AS average_height,
+    SUM(goals) AS total_goals,
+    SUM(shots_on_target) AS total_shots_on_target,
+    SUM(expected_goals_xg) AS total_expected_goals_xg,
+    SUM(yellow_cards) AS total_yellow_cards
+FROM staging
+GROUP BY nationality, position
+    );
+  
+  
+=== ARCHIVO: ./target/run/fifa_pipeline/dbt_project/models/staging/schema.yml/unique_stg_players_player_id.sql ===
+
+    
+    select
+      count(*) as failures,
+      count(*) != 0 as should_warn,
+      count(*) != 0 as should_error
+    from (
+      
+    
+  
+    
+    
+
+select
+    player_id as unique_field,
+    count(*) as n_records
+
+from "fifa"."main"."stg_players"
+where player_id is not null
+group by player_id
+having count(*) > 1
+
+
+
+  
+  
+      
+    ) dbt_internal_test
+=== ARCHIVO: ./target/run/fifa_pipeline/dbt_project/models/staging/schema.yml/not_null_stg_players_position.sql ===
+
+    
+    select
+      count(*) as failures,
+      count(*) != 0 as should_warn,
+      count(*) != 0 as should_error
+    from (
+      
+    
+  
+    
+    
+
+
+
+select position
+from "fifa"."main"."stg_players"
+where position is null
+
+
+
+  
+  
+      
+    ) dbt_internal_test
+=== ARCHIVO: ./target/run/fifa_pipeline/dbt_project/models/staging/schema.yml/not_null_stg_players_goals.sql ===
+
+    
+    select
+      count(*) as failures,
+      count(*) != 0 as should_warn,
+      count(*) != 0 as should_error
+    from (
+      
+    
+  
+    
+    
+
+
+
+select goals
+from "fifa"."main"."stg_players"
+where goals is null
+
+
+
+  
+  
+      
+    ) dbt_internal_test
+=== ARCHIVO: ./target/run/fifa_pipeline/dbt_project/models/staging/schema.yml/not_null_stg_players_player_id.sql ===
+
+    
+    select
+      count(*) as failures,
+      count(*) != 0 as should_warn,
+      count(*) != 0 as should_error
+    from (
+      
+    
+  
+    
+    
+
+
+
+select player_id
+from "fifa"."main"."stg_players"
+where player_id is null
+
+
+
+  
+  
+      
+    ) dbt_internal_test
+=== ARCHIVO: ./target/run/fifa_pipeline/dbt_project/models/staging/stg_players.sql ===
+
+  
+  create view "fifa"."main"."stg_players__dbt_tmp" as (
+    SELECT
+    player_id,
+    player_name,
+    nationality,
+    position,
+    CAST(age AS INTEGER) AS age,
+    CAST(height_cm AS INTEGER) AS height_cm,
+    CAST(goals AS INTEGER) AS goals,
+    CAST(shots_on_target AS INTEGER) AS shots_on_target,
+    CAST(expected_goals_xg AS DOUBLE) AS expected_goals_xg,
+    CAST(yellow_cards AS INTEGER) AS yellow_cards
+FROM read_parquet('data/raw/fifa_clean.parquet')
+  );
+
+=== ARCHIVO: ./dbt_project/models/marts/fct_players_summary.sql ===
+WITH staging AS (
+    SELECT * FROM {{ ref('stg_players') }}
+)
+
+SELECT
+    nationality,
+    position,
+    COUNT(player_id) AS total_players,
+    AVG(age) AS average_age,
+    AVG(height_cm) AS average_height,
+    SUM(goals) AS total_goals,
+    SUM(shots_on_target) AS total_shots_on_target,
+    SUM(expected_goals_xg) AS total_expected_goals_xg,
+    SUM(yellow_cards) AS total_yellow_cards
+FROM staging
+GROUP BY nationality, position
+
+=== ARCHIVO: ./dbt_project/models/staging/stg_players.sql ===
+SELECT
+    player_id,
+    player_name,
+    nationality,
+    position,
+    CAST(age AS INTEGER) AS age,
+    CAST(height_cm AS INTEGER) AS height_cm,
+    CAST(goals AS INTEGER) AS goals,
+    CAST(shots_on_target AS INTEGER) AS shots_on_target,
+    CAST(expected_goals_xg AS DOUBLE) AS expected_goals_xg,
+    CAST(yellow_cards AS INTEGER) AS yellow_cards
+FROM read_parquet('data/raw/fifa_clean.parquet')
+
+=== ARCHIVO: ./dbt_project/models/staging/schema.yml ===
+version: 2
+
+models:
+  - name: stg_players
+    description: "Datos estandarizados de rendimiento de los jugadores de la FIFA"
+    columns:
+      - name: player_id
+        description: "Identificador único del jugador"
+        tests:
+          - unique
+          - not_null
+      - name: goals
+        description: "Goles anotados por el jugador"
+        tests:
+          - not_null
+      - name: position
+        description: "Posición táctica del jugador en la cancha"
+        tests:
+          - not_null
+
+=== ARCHIVO: ./flows/ingest.py ===
+import polars as pl
+import os
+
+def ingest_data():
+    print("Iniciando la ingesta inteligente del dataset de FIFA 2026...")
+    
+    # Rutas alternativas para máxima reproducibilidad
+    csv_path_full = "data/raw/fifa_data.csv"
+    csv_path_sample = "data/raw/fifa_sample.csv"
+    
+    if os.path.exists(csv_path_full):
+        csv_path = csv_path_full
+        print("-> Procesando dataset completo proporcionado por el evaluador.")
+    elif os.path.exists(csv_path_sample):
+        csv_path = csv_path_sample
+        print("-> Procesando dataset de muestra integrado en el repositorio.")
+    else:
+        print("Error: No se encontró ningún archivo CSV de origen en data/raw/")
+        return
+
+    # 1. Leer el CSV detectado
+    df = pl.read_csv(csv_path, infer_schema_length=10000)
+
+    required_columns = [
+        "player_id", 
+        "player_name", 
+        "nationality", 
+        "position", 
+        "age", 
+        "height_cm", 
+        "goals", 
+        "shots_on_target", 
+        "expected_goals_xg", 
+        "yellow_cards"
+    ]
+
+    # 2. Filtrar columnas, quitar nulos, y ELIMINAR DUPLICADOS por ID antes del limit
+    df_filtered = (
+        df.select(required_columns)
+        .drop_nulls(subset=["player_id"])
+        .unique(subset=["player_id"])
+        .limit(5000)
+    )
+
+    # 3. Guardar en Parquet limpio
+    os.makedirs("data/raw", exist_ok=True)
+    output_path = "data/raw/fifa_clean.parquet"
+    df_filtered.write_parquet(output_path)
+
+    print(f"¡Ingesta y Depuración completada exitosamente!")
+    print(f"Total de registros únicos guardados para dbt: {df_filtered.height}")
+
+if __name__ == "__main__":
+    ingest_data()
+
+
+=== ARCHIVO: ./flows/orchestrate.py ===
+from prefect import flow, task
+import subprocess
+from flows.ingest import ingest_data
+
+@task(name="Ingesta de Datos FIFA")
+def task_ingest():
+    ingest_data()
+
+@task(name="Transformación Analítica dbt")
+def task_dbt_run():
+    print("Ejecutando dbt run...")
+
+    subprocess.run(
+        [
+            "dbt",
+            "run",
+            "--project-dir", ".",
+            "--profiles-dir", "."
+        ],
+        check=True
+    )
+
+@task(name="Pruebas de Calidad dbt")
+def task_dbt_test():
+    print("Ejecutando dbt test...")
+
+    subprocess.run(
+        [
+            "dbt",
+            "test",
+            "--project-dir", ".",
+            "--profiles-dir", "."
+        ],
+        check=True
+    )
+
+@flow(name="Pipeline FIFA World Cup 2026")
+def fifa_pipeline():
+
+    task_ingest()
+
+    task_dbt_run()
+
+    task_dbt_test()
+
+if __name__ == "__main__":
+    fifa_pipeline()
+
+=== ARCHIVO: ./dashboard.py ===
+import dash
+from dash import dcc, html, Input, Output
+import plotly.express as px
+import duckdb
+
+app = dash.Dash(__name__)
+
+# DISEÑO MAXIMIZADO: Fuentes grandes y contenedor expandido al 95% de la pantalla
+ESTILO_PANEL = {
+    'fontFamily': 'Segoe UI, Helvetica, Arial, sans-serif',
+    'backgroundColor': '#f3f4f6',
+    'color': '#111111',
+    'padding': '40px',
+    'width': '95%',
+    'margin': '0 auto'
+}
+
+ESTILO_TARJETA = {
+    'backgroundColor': '#ffffff',
+    'padding': '40px',
+    'borderRadius': '16px',
+    'boxShadow': '0 4px 20px rgba(0,0,0,0.06)',
+    'marginBottom': '35px'
+}
+
+app.layout = html.Div(style=ESTILO_PANEL, children=[
+    
+    # Encabezado Gigante
+    html.Div(style={'textAlign': 'center', 'marginBottom': '60px'}, children=[
+        html.H1("Rendimiento de Jugadores - FIFA World Cup 2026", style={'fontWeight': '700', 'fontSize': '42px', 'margin': '0 0 15px 0', 'color': '#111111'}),
+        html.P("Análisis Multidimensional Interactivo • Operaciones de Roll-up (Global) y Drill-down (Detalle)", style={'color': '#4b5563', 'fontSize': '22px', 'fontWeight': '400'})
+    ]),
+    
+    # Selector de País Enorme
+    html.Div(style=ESTILO_TARJETA, children=[
+        html.Label("Seleccionar País para aplicar Drill-down (Aumentar Detalle):", style={'fontWeight': '700', 'fontSize': '22px', 'display': 'block', 'marginBottom': '20px', 'color': '#2563eb'}),
+        dcc.Dropdown(
+            id='filtro-pais',
+            placeholder="Escriba o seleccione un país para desglosar estadísticas...",
+            style={'width': '100%', 'fontSize': '20px', 'color': '#111111'}
+        )
+    ]),
+    
+    # Gráficos en Paralelo Grandes
+    html.Div(style={'display': 'flex', 'gap': '30px', 'flexWrap': 'wrap'}, children=[
+        html.Div(style={'flex': '1', 'minWidth': '600px'}, children=[
+            html.Div(style=ESTILO_TARJETA, children=[
+                dcc.Graph(id='grafico-goles', style={'height': '550px'})
+            ])
+        ]),
+        html.Div(style={'flex': '1', 'minWidth': '600px'}, children=[
+            html.Div(style=ESTILO_TARJETA, children=[
+                dcc.Graph(id='grafico-posiciones', style={'height': '550px'})
+            ])
+        ])
+    ]),
+    
+    # Gráfico de Eficiencia Inferior
+    html.Div(style=ESTILO_TARJETA, children=[
+        dcc.Graph(id='grafico-dispersion', style={'height': '600px'})
+    ])
+])
+
+@app.callback(
+    [Output('filtro-pais', 'options'),
+     Output('grafico-goles', 'figure'),
+     Output('grafico-posiciones', 'figure'),
+     Output('grafico-dispersion', 'figure')],
+    [Input('filtro-pais', 'value')]
+)
+def actualizar_dashboard(pais_seleccionado):
+    conn = duckdb.connect('data/transformed/fifa.duckdb')
+    
+    # LEER APUNTANDO DIRECTAMENTE AL ESQUEMA INTERNO DE DBT (main)
+    paises = [row[0] for row in conn.execute("SELECT DISTINCT nationality FROM main.stg_players WHERE nationality IS NOT NULL ORDER BY nationality").fetchall()]
+    opciones_dropdown = [{'label': p, 'value': p} for p in paises]
+    
+    if not pais_seleccionado:
+        # ==========================================
+        # MODO ROLL-UP (Vista de Mayor Jerarquía)
+        # ==========================================
+        df_goles = conn.execute("SELECT nationality, SUM(goals) as goles FROM main.stg_players GROUP BY nationality ORDER BY goles DESC LIMIT 10").df()
+        df_pos = conn.execute("SELECT position, COUNT(player_id) as total FROM main.stg_players GROUP BY position").df()
+        df_disp = conn.execute("SELECT nationality, SUM(expected_goals_xg) as xg, SUM(goals) as goles FROM main.stg_players GROUP BY nationality").df()
+        
+        fig_goles = px.bar(df_goles, x='nationality', y='goles', title='Top 10 Países con Mayor Goleo (Roll-up Global)', template='plotly_white', color_discrete_sequence=['#2563eb'])
+        fig_posiciones = px.pie(df_pos, values='total', names='position', title='Distribución Global de Jugadores por Posición', template='plotly_white', color_discrete_sequence=px.colors.qualitative.Set3)
+        fig_dispersion = px.scatter(df_disp, x='xg', y='goles', hover_name='nationality', title='Eficiencia Global: Goles Esperados (xG) vs Goles Reales', template='plotly_white', color_discrete_sequence=['#10b981'])
+    else:
+        # ==========================================
+        # MODO DRILL-DOWN (Desglose de Menor Jerarquía)
+        # ==========================================
+        df_goles = conn.execute("SELECT player_name, goals FROM main.stg_players WHERE nationality = ? ORDER BY goals DESC LIMIT 10", [pais_seleccionado]).df()
+        df_pos = conn.execute("SELECT position, COUNT(player_id) as total FROM main.stg_players WHERE nationality = ? GROUP BY position", [pais_seleccionado]).df()
+        df_disp = conn.execute("SELECT player_name, expected_goals_xg as xg, goals, position FROM main.stg_players WHERE nationality = ?", [pais_seleccionado]).df()
+        
+        fig_goles = px.bar(df_goles, x='player_name', y='goals', title=f'Máximos Anotadores: {pais_seleccionado} (Drill-down Individual)', template='plotly_white', color_discrete_sequence=['#f59e0b'])
+        fig_posiciones = px.pie(df_pos, values='total', names='position', title=f'Composición Táctica: {pais_seleccionado}', template='plotly_white', color_discrete_sequence=px.colors.qualitative.Pastel)
+        fig_dispersion = px.scatter(df_disp, x='xg', y='goals', color='position', hover_name='player_name', title=f'Rendimiento de Jugadores de {pais_seleccionado} (xG vs Goles)', template='plotly_white')
+
+    conn.close()
+    
+    # AUMENTO ESCALADO DE FUENTES EN LOS TRES GRÁFICOS
+    for fig in [fig_goles, fig_posiciones, fig_dispersion]:
+        fig.update_layout(
+            font_family="Segoe UI, Helvetica, Arial, sans-serif",
+            font_size=16,            # Letras de los ejes más grandes
+            title_font_size=22,      # Títulos de gráficos imponentes
+            title_font_color="#111111",
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            margin=dict(l=40, r=40, t=60, b=40)
+        )
+    return opciones_dropdown, fig_goles, fig_posiciones, fig_dispersion
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8050, debug=False)

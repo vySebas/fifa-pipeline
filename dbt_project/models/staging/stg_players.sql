@@ -9,4 +9,4 @@ SELECT
     CAST(shots_on_target AS INTEGER) AS shots_on_target,
     CAST(expected_goals_xg AS DOUBLE) AS expected_goals_xg,
     CAST(yellow_cards AS INTEGER) AS yellow_cards
-FROM read_parquet('data/raw/fifa_clean.parquet')
+FROM {{ source('raw', 'raw_player_performance') }}
